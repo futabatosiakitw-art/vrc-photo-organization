@@ -33,7 +33,7 @@
 <div class="main-area">
   <div id="drop-zone">ここに複数の写真をドロップ (またはクリックして選択)</div>
   <input type="file" id="file-input" multiple accept="image/png, image/jpeg" style="display:none;">
-  <div class="file-switcher" id="file-counter" style="display:none;">プレビュー中: 1 / 1枚</div>
+  <div class="file-switcher" id="file-counter" style="display:none;">プレビュー中: 1 / 1枚 (クリックで切り替え)</div>
   <div class="canvas-container">
     <canvas id="preview-canvas" class="fit-view"></canvas>
   </div>
@@ -48,16 +48,18 @@
       <span>テキスト情報</span>
       <span id="current-file-name" style="font-size:11px; color:#888; font-weight:normal;"></span>
     </h3>
-    <label class="flex-row"><input type="checkbox" id="check-show-date" checked> 日時 (表示用)</label>
+    <label class="flex-row"><input type="checkbox" id="check-show-date"> 日時 (表示用)</label>
     <input type="text" id="input-date" placeholder="例: 2026/09/08 02:19">
-    <label class="flex-row"><input type="checkbox" id="check-show-world" checked> ワールド名</label>
+    <label class="flex-row"><input type="checkbox" id="check-show-world"> ワールド名</label>
     <input type="text" id="input-world" placeholder="Unknown World">
-    <label class="flex-row"><input type="checkbox" id="check-show-comment" checked> 一言コメント</label>
+    <label class="flex-row"><input type="checkbox" id="check-show-comment"> 一言コメント</label>
     <input type="text" id="input-comment" placeholder="デフォルトは空">
+    <label class="flex-row"><input type="checkbox" id="check-inline-layout"> 日時・ワールド名・コメントを一行にする</label>
+    <label class="flex-row"><input type="checkbox" id="check-file-worldid"> ファイル名にワールドIDを含める</label>
   </div>
 
   <div class="control-group">
-    <h3>フォント・レイアウト</h3>
+    <h3>フォント・スタイル設定</h3>
     <select id="select-font-preset">
       <option value='"UD Digi Kyokasho N-R", "UD デジタル 教科書体 N-R", sans-serif'>かわいい教科書体 (Win11標準)</option>
       <option value='"Kiwi Maru", "Motoya L Maru", "ヒラギノ丸ゴ ProN", sans-serif'>丸ゴシック系</option>
@@ -68,7 +70,14 @@
     </select>
     <input type="text" id="input-custom-font" placeholder="フォント名を入力 (例: 'Yuruka')" style="display:none;">
     
-    <label>配置位置</label>
+    <div class="flex-row" style="margin-top:8px;">
+      <label style="flex:1;">文字カラー:</label>
+      <input type="color" id="input-font-color" value="#ffffff" style="width:60px; height:32px; padding:0; border:none; background:none; cursor:pointer;">
+    </div>
+    <label class="flex-row"><input type="checkbox" id="check-bold" checked> 太字にする (Bold)</label>
+    <label class="flex-row"><input type="checkbox" id="check-shadow" checked> 影をつける (Shadow)</label>
+
+    <label style="margin-top:8px;">配置位置</label>
     <select id="select-position">
       <option value="bottom-left">左下</option>
       <option value="bottom-right">右下</option>
@@ -120,11 +129,7 @@
 </div>
 
 <script>
-  // 複数ファイルを個別のデータとして管理する仕組み
-  const state = {
-    items: [],       // { file, img, date, world, originalName } の配列
-    currentIndex: 0
-  };
+  const state = { items: [], currentIndex: 0 };
 
   const els = {
     dropZone: document.getElementById('drop-zone'), fileInput: document.getElementById('file-input'),
@@ -134,7 +139,9 @@
     showDate: document.getElementById('check-show-date'), date: document.getElementById('input-date'),
     showWorld: document.getElementById('check-show-world'), world: document.getElementById('input-world'),
     showComment: document.getElementById('check-show-comment'), comment: document.getElementById('input-comment'),
+    inlineLayout: document.getElementById('check-inline-layout'), fileWorldId: document.getElementById('check-file-worldid'),
     fontPreset: document.getElementById('select-font-preset'), customFont: document.getElementById('input-custom-font'),
+    fontColor: document.getElementById('input-font-color'), bold: document.getElementById('check-bold'), shadow: document.getElementById('check-shadow'),
     position: document.getElementById('select-position'), size: document.getElementById('slider-size'),
     whiteFrame: document.getElementById('check-white-frame'), marginSize: document.getElementById('slider-margin'),
     textInMargin: document.getElementById('check-text-in-margin'),
@@ -147,7 +154,6 @@
   const addTrigger = (element, isInput = false) => {
     element.addEventListener(isInput ? 'input' : 'change', () => {
       if (element.type === 'range') syncVal(element.id.split('-').pop());
-      // 入力値が変更されたら、現在選択中のアイテムのデータを更新して再描画
       if (state.items.length > 0) {
         const current = state.items[state.currentIndex];
         current.date = els.date.value;
@@ -157,8 +163,8 @@
     });
   };
 
-  ['date', 'world', 'comment', 'customFont'].forEach(id => addTrigger(els[id], true));
-  ['showDate', 'showWorld', 'showComment', 'position', 'whiteFrame', 'textInMargin', 'overlayFrame', 'overlaySelect', 'fontPreset'].forEach(id => addTrigger(els[id], false));
+  ['date', 'world', 'comment', 'customFont', 'fontColor'].forEach(id => addTrigger(els[id], true));
+  ['showDate', 'showWorld', 'showComment', 'inlineLayout', 'fileWorldId', 'bold', 'shadow', 'position', 'whiteFrame', 'textInMargin', 'overlayFrame', 'overlaySelect', 'fontPreset'].forEach(id => addTrigger(els[id], false));
   ['size', 'marginSize', 'crisp', 'warm', 'cool'].forEach(id => addTrigger(els[id], true));
 
   els.actualSize.addEventListener('change', e => { els.canvas.className = e.target.checked ? '' : 'fit-view'; });
@@ -175,24 +181,18 @@
   async function handleFiles(files) {
     if (files.length === 0) return;
     const fileArray = Array.from(files);
-    
     state.items = [];
     state.currentIndex = 0;
 
-    // 全ファイルを非同期で1枚ずつ解析してオブジェクトとして保持
     for (const file of fileArray) {
       const meta = await parseVRChatMetadata(file);
       const img = await loadImageAsync(file);
       state.items.push({
-        file: file,
-        img: img,
-        originalName: file.name,
-        date: meta.date,
-        world: meta.world
+        file: file, img: img, originalName: file.name,
+        date: meta.date, world: meta.world, worldId: meta.worldId
       });
     }
 
-    // UIの切り替え
     if (state.items.length > 1) {
       els.fileCounter.style.display = 'block';
       els.fileCounter.innerText = `プレビュー中: 1 / ${state.items.length}枚 (クリックで切り替え)`;
@@ -206,7 +206,6 @@
     loadCurrentItemToUI();
   }
 
-  // プレビューをクリックするごとに次の画像へ切り替える機能
   els.canvas.addEventListener('click', () => {
     if (state.items.length <= 1) return;
     state.currentIndex = (state.currentIndex + 1) % state.items.length;
@@ -223,10 +222,10 @@
     updateCanvas();
   }
 
-  // メタデータ抽出関数
   async function parseVRChatMetadata(file) {
     let resultWorld = "Unknown World";
     let resultDate = "2026/09/08 00:00";
+    let resultWorldId = "";
 
     try {
       const buffer = await file.arrayBuffer();
@@ -235,9 +234,13 @@
 
       const worldMatch = fullText.match(/Worlddisplayname[>:\s"]+([^<"&]+)/i) || fullText.match(/<vrc:Worlddisplayname>(.*?)<\/vrc:Worlddisplayname>/i);
       if (worldMatch && worldMatch[1]) {
-        let rawWorld = worldMatch[1].trim();
-        rawWorld = rawWorld.replace(/Ã[^"]*?/g, '').replace(/[^\x20-\x7E\u3000-\u30FF\u4E00-\u9FFF]/g, '');
+        let rawWorld = worldMatch[1].trim().replace(/Ã[^"]*?/g, '').replace(/[^\x20-\x7E\u3000-\u30FF\u4E00-\u9FFF]/g, '');
         if (rawWorld) resultWorld = rawWorld;
+      }
+
+      const idMatch = fullText.match(/Worldid[>:\s"]+(wrld_[a-fA-F0-9\-]+)/i) || fullText.match(/(wrld_[a-fA-F0-9\-]{36})/i);
+      if (idMatch && idMatch[1]) {
+        resultWorldId = idMatch[1].trim();
       }
 
       const dateMatch = fullText.match(/CreateDate[>:\s"]+([\dT:\+\-\s]+)/i) || fullText.match(/(\d{4}):(\d{2}):(\d{2})[T\s](\d{2}):(\d{2}):(\d{2})/);
@@ -249,42 +252,46 @@
         }
       } else {
         const fnMatch = file.name.match(/VRChat_(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
-        if (fnMatch) {
-          resultDate = `${fnMatch[1]}/${fnMatch[2]}/${fnMatch[3]} ${fnMatch[4]}:${fnMatch[5]}`;
-        }
+        if (fnMatch) resultDate = `${fnMatch[1]}/${fnMatch[2]}/${fnMatch[3]} ${fnMatch[4]}:${fnMatch[5]}`;
       }
     } catch (e) {
       console.warn("メタデータ解析失敗:", e);
     }
-    return { date: resultDate, world: resultWorld };
+    return { date: resultDate, world: resultWorld, worldId: resultWorldId };
   }
 
-  function generateFilename(originalName, worldName) {
+  function generateFilename(item) {
+    const originalName = item.originalName;
+    const worldName = item.world;
+    const worldId = item.worldId;
+
     const match = originalName.match(/VRChat_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})/);
     let baseDate = "2026-09-08-00-00-00";
     if (match) baseDate = `${match[1]}-${match[2]}`;
+    
     const safeWorldName = (worldName || "").trim().replace(/[\\\/:*?"<>|]/g, '');
-    return safeWorldName ? `${baseDate}_${safeWorldName}.png` : `${baseDate}.png`;
+    let nameParts = [baseDate];
+    if (safeWorldName) nameParts.push(safeWorldName);
+    
+    if (els.fileWorldId.checked && worldId) {
+      nameParts.push(worldId);
+    }
+
+    return nameParts.join('_') + '.png';
   }
 
   function loadImageAsync(file) {
     return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.src = e.target.result;
-      };
+      reader.onload = (e) => { const img = new Image(); img.onload = () => resolve(img); img.src = e.target.result; };
       reader.readAsDataURL(file);
     });
   }
 
-  // --- フレーム描画アルゴリズム ---
   function drawProceduralFrame(ctx, type, cw, ch, p, w, h) {
     const shortSide = Math.min(w, h);
     ctx.save();
     ctx.translate(p, p); 
-    
     const lw = Math.max(2, shortSide * 0.005);
     const m = shortSide * 0.03;
 
@@ -400,7 +407,6 @@
     ctx.restore();
   }
 
-  // 描画メイン（指定されたアイテムのデータ、または現在のプレビューを描画）
   function updateCanvas(ctxToUse = els.ctx, itemOverride = null) {
     const targetItem = itemOverride || (state.items.length > 0 ? state.items[state.currentIndex] : null);
     if (!targetItem || !targetItem.img) return;
@@ -439,32 +445,37 @@
       drawProceduralFrame(ctx, els.overlaySelect.value, cw, ch, padding, imgToUse.width, imgToUse.height);
     }
 
-    const textLines = [];
-    // プレビュー中の場合のみ現在の入力欄の値を反映、ZIP出力時は個別のアイテムデータを反映
     const dateVal = isPreview ? els.date.value : targetItem.date;
     const worldVal = isPreview ? els.world.value : targetItem.world;
     const commentVal = els.comment.value;
 
-    if (els.showDate.checked && dateVal) textLines.push(dateVal);
-    if (els.showWorld.checked && worldVal) textLines.push(worldVal);
-    if (els.showComment.checked && commentVal) textLines.push(commentVal);
+    const parts = [];
+    if (els.showDate.checked && dateVal) parts.push(dateVal);
+    if (els.showWorld.checked && worldVal) parts.push(worldVal);
+    if (els.showComment.checked && commentVal) parts.push(commentVal);
 
-    if (textLines.length === 0) return;
+    if (parts.length === 0) return;
+
+    const textLines = els.inlineLayout.checked ? [parts.join('  ')] : parts;
 
     let fontFamily = els.fontPreset.value;
     if (fontFamily === 'custom') fontFamily = els.customFont.value || 'sans-serif';
     
     const fontSize = shortSide * (parseInt(els.size.value) / 100);
-    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    const boldStr = els.bold.checked ? 'bold ' : '';
+    ctx.font = `${boldStr}${fontSize}px ${fontFamily}`;
     
     const putInMargin = els.whiteFrame.checked && els.textInMargin.checked;
-    ctx.fillStyle = (els.whiteFrame.checked && putInMargin) ? '#222222' : '#ffffff';
+    ctx.fillStyle = els.fontColor.value;
     
-    if (!putInMargin && !els.whiteFrame.checked) {
-      ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = fontSize * 0.3; ctx.shadowOffsetX = fontSize * 0.05; ctx.shadowOffsetY = fontSize * 0.05;
-    } else if (!putInMargin && els.whiteFrame.checked) {
-      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = fontSize * 0.2;
-    } else { ctx.shadowColor = 'transparent'; }
+    if (els.shadow.checked) {
+      ctx.shadowColor = els.whiteFrame.checked ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = fontSize * 0.3;
+      ctx.shadowOffsetX = fontSize * 0.05;
+      ctx.shadowOffsetY = fontSize * 0.05;
+    } else {
+      ctx.shadowColor = 'transparent';
+    }
 
     ctx.textBaseline = 'top';
     let startX, startY;
@@ -481,15 +492,13 @@
     textLines.forEach((text, index) => { ctx.fillText(text, startX, startY + (index * lineHeight)); });
   }
 
-  // 1枚ダウンロード
   els.btnDownload.addEventListener('click', () => {
     if (state.items.length === 0) return alert("画像を読み込んでください");
     const current = state.items[state.currentIndex];
-    const dlName = generateFilename(current.originalName, els.world.value);
+    const dlName = generateFilename(current);
     const link = document.createElement('a'); link.download = dlName; link.href = els.canvas.toDataURL('image/png'); link.click();
   });
 
-  // ZIP一括ダウンロード（全画像の個別メタデータを適用して出力）
   els.btnZipDownload.addEventListener('click', async () => {
     if (state.items.length === 0) return;
     const zip = new JSZip();
@@ -497,12 +506,10 @@
     els.btnZipDownload.innerText = "ZIP生成中... (お待ちください)"; els.btnZipDownload.disabled = true;
 
     const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
-    
     for (const item of state.items) {
-      // 各画像が持つそれぞれのワールド名・日時で描画
       updateCanvas(offCtx, item);
       const blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
-      zip.file(generateFilename(item.originalName, item.world), blob);
+      zip.file(generateFilename(item), blob);
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
