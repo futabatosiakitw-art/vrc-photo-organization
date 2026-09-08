@@ -30,6 +30,26 @@
     #btn-zip-download:hover { background: #bd6235; }
     .file-switcher { font-size: 12px; color: #aaa; text-align: center; margin-bottom: 8px; }
     
+    /* ワールド直接リンク用スタイル */
+    .world-link-box {
+      background: #222;
+      border: 1px solid #444;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      display: none;
+      font-size: 13px;
+      text-align: center;
+    }
+    .world-link-box a {
+      color: #58a6ff;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .world-link-box a:hover {
+      text-decoration: underline;
+    }
+
     /* バナー＆X（Twitter）リンクエリア */
     .promo-section {
       border-top: 1px solid #444;
@@ -173,6 +193,12 @@
     <label class="flex-row"><input type="checkbox" id="check-auto-prop" checked> メタデータからワールド情報を自動反映する</label>
     <label>コメント欄 (メモ・プロパティ用):</label>
     <textarea id="input-property-comment" placeholder="VRC world: ワールド名&#10;URL: https://vrchat.com/home/world/wrld_...&#10;author: &#10;costume: &#10;shop: "></textarea>
+    
+    <!-- ▼ ワールドへ直接飛べるリンクボタン ▼ -->
+    <div id="world-link-container" class="world-link-box">
+      🌐 <a id="world-page-link" href="#" target="_blank">このワールドのVRChatページを開く</a>
+    </div>
+
     <label class="flex-row" style="margin-top: 8px;"><input type="checkbox" id="check-save-txt" checked> 同じ名前のテキストファイル(.txt)も一緒に保存する</label>
   </div>
 
@@ -208,6 +234,7 @@
     showComment: document.getElementById('check-show-comment'), comment: document.getElementById('input-comment'),
     inlineLayout: document.getElementById('check-inline-layout'), 
     autoProp: document.getElementById('check-auto-prop'), propComment: document.getElementById('input-property-comment'),
+    worldLinkContainer: document.getElementById('world-link-container'), worldPageLink: document.getElementById('world-page-link'),
     saveTxt: document.getElementById('check-save-txt'),
     fileWorldName: document.getElementById('check-file-worldname'), fileWorldId: document.getElementById('check-file-worldid'),
     fontPreset: document.getElementById('select-font-preset'), customFont: document.getElementById('input-custom-font'),
@@ -293,6 +320,14 @@
     if (els.autoProp.checked) {
       const worldUrl = current.worldId ? `https://vrchat.com/home/world/${current.worldId}` : '';
       els.propComment.value = `VRC world: ${current.world}\nURL: ${worldUrl}\nauthor: \ncostume: \nshop: `;
+    }
+
+    // クリッカブルなワールドリンクの制御
+    if (current.worldId) {
+      els.worldPageLink.href = `https://vrchat.com/home/world/${current.worldId}`;
+      els.worldLinkContainer.style.display = 'block';
+    } else {
+      els.worldLinkContainer.style.display = 'none';
     }
 
     updateCanvas();
@@ -587,13 +622,11 @@
       
       const blob = await new Promise(resolve => els.canvas.toBlob(resolve, 'image/png'));
 
-      // 画像のダウンロード
       const link = document.createElement('a'); 
       link.download = dlName; 
       link.href = URL.createObjectURL(blob); 
       link.click();
 
-      // テキストファイルの同時ダウンロード
       if (els.saveTxt.checked && els.propComment.value.trim() !== "") {
         const txtName = dlName.replace(/\.png$/, '.txt');
         const txtBlob = new Blob([els.propComment.value], { type: 'text/plain;charset=utf-8' });
@@ -631,7 +664,6 @@
         const pngName = generateFilename(item);
         zip.file(pngName, blob);
 
-        // ZIP内にもテキストファイルを同梱
         if (els.saveTxt.checked && els.propComment.value.trim() !== "") {
           const txtName = pngName.replace(/\.png$/, '.txt');
           zip.file(txtName, els.propComment.value);
