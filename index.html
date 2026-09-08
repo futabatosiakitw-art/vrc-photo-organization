@@ -9,13 +9,13 @@
     :root { --bg-color: #1e1e1e; --panel-bg: #2d2d2d; --text-color: #f0f0f0; --accent: #4a90e2; }
     body { margin: 0; padding: 20px; font-family: sans-serif; background-color: var(--bg-color); color: var(--text-color); display: flex; gap: 20px; height: 100vh; box-sizing: border-box; }
     .main-area { flex: 1; display: flex; flex-direction: column; gap: 15px; overflow: hidden; }
-    .side-panel { width: 380px; background: var(--panel-bg); padding: 20px; border-radius: 8px; overflow-y: auto; }
+    .side-panel { width: 380px; background: var(--panel-bg); padding: 20px; border-radius: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
     #drop-zone { border: 2px dashed #666; border-radius: 8px; padding: 20px; text-align: center; color: #aaa; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
     #drop-zone.dragover { background: #3a3a3a; border-color: var(--accent); }
     .canvas-container { flex: 1; overflow: auto; text-align: center; display: flex; align-items: center; justify-content: center; background: #111; border-radius: 8px; padding: 10px; }
     canvas { background: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transition: max-width 0.2s, max-height 0.2s; }
     canvas.fit-view { max-width: 100%; max-height: 100%; object-fit: contain; }
-    .control-group { margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #444; }
+    .control-group { border-bottom: 1px solid #444; padding-bottom: 15px; }
     .control-group h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; }
     label { display: block; margin-bottom: 5px; font-size: 13px; }
     input[type="text"], select, input[type="range"] { width: 100%; box-sizing: border-box; padding: 8px; background: #1a1a1a; border: 1px solid #555; color: white; border-radius: 4px; margin-bottom: 8px; }
@@ -26,6 +26,48 @@
     #btn-zip-download { background: #e27a4a; }
     #btn-zip-download:hover { background: #bd6235; }
     .file-switcher { font-size: 12px; color: #aaa; text-align: center; margin-bottom: 8px; }
+    
+    /* バナー＆X（Twitter）リンクエリアのスタイル */
+    .promo-section {
+      margin-top: auto;
+      border-top: 1px solid #444;
+      padding-top: 15px;
+      text-align: center;
+    }
+    .promo-banner {
+      width: 100%;
+      height: 90px;
+      background: #1a1a1a;
+      border: 1px solid #555;
+      border-radius: 6px;
+      overflow: hidden;
+      display: block;
+      margin-bottom: 10px;
+      text-decoration: none;
+    }
+    .promo-banner img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .twitter-link {
+      display: inline-block;
+      color: #fff;
+      background: #000000;
+      border: 1px solid #555;
+      padding: 10px 15px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: bold;
+      width: 100%;
+      box-sizing: border-box;
+      transition: background 0.2s;
+    }
+    .twitter-link:hover {
+      background: #222;
+      border-color: #777;
+    }
   </style>
 </head>
 <body>
@@ -126,6 +168,15 @@
 
   <button id="btn-download">表示中の1枚をダウンロード</button>
   <button id="btn-zip-download" style="display:none;">全枚数をZIPで一括保存</button>
+
+  <!-- ▼ ここにバナーとX（Twitter）リンクを追加しました ▼ -->
+  <div class="promo-section">
+    <a href="https://twitter.com/あなたのID" target="_blank" class="promo-banner">
+      <img src="banner.png" alt="フタバとシアキ">
+      <div style="line-height:90px; color:#aaa; font-size:12px;">フタバとシアキの工房 バナー</div>
+    </a>
+    <a href="https://x.com/futaba_to_siaki" target="_blank" class="twitter-link">　これ置いた人の𝕏　 </a>
+  </div>
 </div>
 
 <script>
@@ -513,12 +564,11 @@
     const originalText = els.btnZipDownload.innerText;
     els.btnZipDownload.innerText = "ZIP生成中... (お待ちください)"; els.btnZipDownload.disabled = true;
 
-    // 1枚目のアイテムから日時を抽出してZIPのファイル名ベースにする
     const firstItem = state.items[0];
     const match = firstItem.originalName.match(/VRChat_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})/);
     let zipBaseDate = "Photos";
     if (match) {
-      zipBaseDate = `${match[1]}-${match[2]}`; // 例: 2026-09-08-03-12-22
+      zipBaseDate = `${match[1]}-${match[2]}`;
     }
 
     const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
@@ -530,7 +580,7 @@
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const link = document.createElement('a'); 
-    link.download = `VRC_${zipBaseDate}.zip`; // 1枚目の日時を反映したZIP名
+    link.download = `VRC_${zipBaseDate}.zip`;
     link.href = URL.createObjectURL(zipBlob); 
     link.click();
 
