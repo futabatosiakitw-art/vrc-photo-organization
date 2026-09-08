@@ -20,7 +20,8 @@
     .control-group { border-bottom: 1px solid #444; padding-bottom: 15px; flex-shrink: 0; }
     .control-group h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; }
     label { display: block; margin-bottom: 5px; font-size: 13px; }
-    input[type="text"], select, input[type="range"] { width: 100%; box-sizing: border-box; padding: 8px; background: #1a1a1a; border: 1px solid #555; color: white; border-radius: 4px; margin-bottom: 8px; }
+    input[type="text"], select, input[type="range"], textarea { width: 100%; box-sizing: border-box; padding: 8px; background: #1a1a1a; border: 1px solid #555; color: white; border-radius: 4px; margin-bottom: 8px; font-family: sans-serif; }
+    textarea { resize: vertical; min-height: 80px; }
     .flex-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
     .flex-row input[type="text"] { margin-bottom: 0; }
     button { width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; margin-bottom: 10px; flex-shrink: 0; }
@@ -45,11 +46,11 @@
       display: block;
       margin-bottom: 10px;
       text-decoration: none;
-      line-height: 0; /* 画像の下に変な隙間ができるのを防ぐ */
+      line-height: 0;
     }
     .promo-banner img {
       width: 100%;
-      height: auto; /* 高さを固定せず、画像の縦横比に合わせて自動調整する */
+      height: auto;
       display: block;
     }
     .twitter-link {
@@ -99,7 +100,6 @@
     <label class="flex-row"><input type="checkbox" id="check-show-comment"> 一言コメント</label>
     <input type="text" id="input-comment" placeholder="デフォルトは空">
     <label class="flex-row"><input type="checkbox" id="check-inline-layout"> 日時・ワールド名・コメントを一行にする</label>
-    <label class="flex-row"><input type="checkbox" id="check-file-worldid"> ファイル名にワールドIDを含める</label>
   </div>
 
   <div class="control-group">
@@ -168,6 +168,21 @@
     <input type="range" id="slider-cool" min="0" max="100" step="5" value="0">
   </div>
 
+  <!-- ▼ プロパティコメント入力設定 ▼ -->
+  <div class="control-group">
+    <h3>プロパティコメント設定</h3>
+    <label class="flex-row"><input type="checkbox" id="check-auto-prop" checked> メタデータからワールド名を自動反映する</label>
+    <label>コメント欄 (ファイルプロパティに埋め込み):</label>
+    <textarea id="input-property-comment" placeholder="VRC world: ワールド名&#10;author: "></textarea>
+  </div>
+
+  <!-- ▼ ファイル名設定 ▼ -->
+  <div class="control-group">
+    <h3>ファイル名設定</h3>
+    <label class="flex-row"><input type="checkbox" id="check-file-worldname"> ファイル名にワールド名を含める</label>
+    <label class="flex-row"><input type="checkbox" id="check-file-worldid"> ファイル名にワールドIDを含める</label>
+  </div>
+
   <button id="btn-download">表示中の1枚をダウンロード</button>
   <button id="btn-zip-download" style="display:none;">全枚数をZIPで一括保存</button>
 
@@ -192,7 +207,9 @@
     showDate: document.getElementById('check-show-date'), date: document.getElementById('input-date'),
     showWorld: document.getElementById('check-show-world'), world: document.getElementById('input-world'),
     showComment: document.getElementById('check-show-comment'), comment: document.getElementById('input-comment'),
-    inlineLayout: document.getElementById('check-inline-layout'), fileWorldId: document.getElementById('check-file-worldid'),
+    inlineLayout: document.getElementById('check-inline-layout'), 
+    autoProp: document.getElementById('check-auto-prop'), propComment: document.getElementById('input-property-comment'),
+    fileWorldName: document.getElementById('check-file-worldname'), fileWorldId: document.getElementById('check-file-worldid'),
     fontPreset: document.getElementById('select-font-preset'), customFont: document.getElementById('input-custom-font'),
     fontColor: document.getElementById('input-font-color'), bold: document.getElementById('check-bold'), shadow: document.getElementById('check-shadow'),
     position: document.getElementById('select-position'), size: document.getElementById('slider-size'),
@@ -216,8 +233,8 @@
     });
   };
 
-  ['date', 'world', 'comment', 'customFont', 'fontColor'].forEach(id => addTrigger(els[id], true));
-  ['showDate', 'showWorld', 'showComment', 'inlineLayout', 'fileWorldId', 'bold', 'shadow', 'position', 'whiteFrame', 'textInMargin', 'overlayFrame', 'overlaySelect', 'fontPreset'].forEach(id => addTrigger(els[id], false));
+  ['date', 'world', 'comment', 'customFont', 'fontColor', 'propComment'].forEach(id => addTrigger(els[id], true));
+  ['showDate', 'showWorld', 'showComment', 'inlineLayout', 'autoProp', 'fileWorldName', 'fileWorldId', 'bold', 'shadow', 'position', 'whiteFrame', 'textInMargin', 'overlayFrame', 'overlaySelect', 'fontPreset'].forEach(id => addTrigger(els[id], false));
   ['size', 'marginSize', 'crisp', 'warm', 'cool'].forEach(id => addTrigger(els[id], true));
 
   els.actualSize.addEventListener('change', e => { els.canvas.className = e.target.checked ? '' : 'fit-view'; });
@@ -272,6 +289,11 @@
     els.date.value = current.date;
     els.world.value = current.world;
     els.fileNameDisplay.innerText = `(${current.originalName})`;
+
+    if (els.autoProp.checked) {
+      els.propComment.value = `VRC world: ${current.world}\nauthor: `;
+    }
+
     updateCanvas();
   }
 
@@ -322,9 +344,12 @@
     let baseDate = "2026-09-08-00-00-00";
     if (match) baseDate = `${match[1]}-${match[2]}`;
     
-    const safeWorldName = (worldName || "").trim().replace(/[\\\/:*?"<>|]/g, '');
     let nameParts = [baseDate];
-    if (safeWorldName) nameParts.push(safeWorldName);
+    
+    if (els.fileWorldName.checked) {
+      const safeWorldName = (worldName || "").trim().replace(/[\\\/:*?"<>|]/g, '');
+      if (safeWorldName) nameParts.push(safeWorldName);
+    }
     
     if (els.fileWorldId.checked && worldId) {
       nameParts.push(worldId);
@@ -339,6 +364,83 @@
       reader.onload = (e) => { const img = new Image(); img.onload = () => resolve(img); img.src = e.target.result; };
       reader.readAsDataURL(file);
     });
+  }
+
+  // PNGにtEXtチャンク（コメント）を埋め込む関数
+  async function addPngCommentToBlob(blob, commentText) {
+    if (!commentText) return blob;
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    
+    if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
+      return blob;
+    }
+
+    const crcTable = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) {
+        if ((c & 1) !== 0) {
+          c = 0xEDB88320 ^ (c >>> 1);
+        } else {
+          c = c >>> 1;
+        }
+      }
+      crcTable[n] = c;
+    }
+
+    function calcCrc(buf) {
+      let c = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++) {
+        c = (c >>> 8) ^ crcTable[(c ^ buf[i]) & 0xFF];
+      }
+      return ~c >>> 0;
+    }
+
+    let offset = 8;
+    const newChunks = [];
+    const view = new DataView(arrayBuffer);
+
+    while (offset < bytes.length) {
+      const length = view.getUint32(offset);
+      const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
+      const chunkBytes = bytes.slice(offset, offset + 12 + length);
+      
+      if (type === 'IEND') {
+        const encoder = new TextEncoder();
+        const keyword = encoder.encode('Comment');
+        const text = encoder.encode(commentText);
+        const dataLen = keyword.length + 1 + text.length;
+        
+        const tChunkData = new Uint8Array(4 + 4 + dataLen + 4);
+        const tView = new DataView(tChunkData.buffer);
+        tView.setUint32(0, dataLen);
+        tChunkData.set([0x74, 0x45, 0x58, 0x74], 4); // "tEXt"
+        tChunkData.set(keyword, 8);
+        tChunkData[8 + keyword.length] = 0;
+        tChunkData.set(text, 8 + keyword.length + 1);
+        
+        const crcTarget = tChunkData.slice(4, 4 + 4 + dataLen);
+        const crc = calcCrc(crcTarget);
+        tView.setUint32(4 + 4 + dataLen, crc);
+        
+        newChunks.push(tChunkData);
+      }
+      
+      newChunks.push(chunkBytes);
+      offset += 12 + length;
+      if (type === 'IEND') break;
+    }
+
+    const totalLength = newChunks.reduce((acc, c) => acc + c.length, 0);
+    const resultBytes = new Uint8Array(totalLength);
+    let pos = 0;
+    for (const chunk of newChunks) {
+      resultBytes.set(chunk, pos);
+      pos += chunk.length;
+    }
+    
+    return new Blob([resultBytes], { type: 'image/png' });
   }
 
   function drawProceduralFrame(ctx, type, cw, ch, p, w, h) {
@@ -553,11 +655,18 @@
     textLines.forEach((text, index) => { ctx.fillText(text, startX, startY + (index * lineHeight)); });
   }
 
-  els.btnDownload.addEventListener('click', () => {
+  els.btnDownload.addEventListener('click', async () => {
     if (state.items.length === 0) return alert("画像を読み込んでください");
     const current = state.items[state.currentIndex];
     const dlName = generateFilename(current);
-    const link = document.createElement('a'); link.download = dlName; link.href = els.canvas.toDataURL('image/png'); link.click();
+    
+    let blob = await new Promise(resolve => els.canvas.toBlob(resolve, 'image/png'));
+    blob = await addPngCommentToBlob(blob, els.propComment.value);
+
+    const link = document.createElement('a'); 
+    link.download = dlName; 
+    link.href = URL.createObjectURL(blob); 
+    link.click();
   });
 
   els.btnZipDownload.addEventListener('click', async () => {
@@ -576,7 +685,8 @@
     const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
     for (const item of state.items) {
       updateCanvas(offCtx, item);
-      const blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
+      let blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
+      blob = await addPngCommentToBlob(blob, els.propComment.value);
       zip.file(generateFilename(item), blob);
     }
 
