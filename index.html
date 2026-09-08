@@ -395,8 +395,10 @@
         return ~c >>> 0;
       }
 
+      // 先頭のPNGシグネチャ（8バイト）を保持
+      const pngSignature = bytes.slice(0, 8);
+      const newChunks = [pngSignature];
       let offset = 8;
-      const newChunks = [];
       const view = new DataView(arrayBuffer);
 
       while (offset < bytes.length) {
@@ -441,7 +443,7 @@
       return new Blob([resultBytes], { type: 'image/png' });
     } catch (e) {
       console.warn("メタデータ追加エラー:", e);
-      return blob; // エラー時はそのままのblobを返す
+      return blob;
     }
   }
 
