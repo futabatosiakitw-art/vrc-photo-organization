@@ -372,21 +372,14 @@
         ctx.shadowBlur = 0;
         break;
       case 'street':
-        // ストリートフレームの修正: 外側枠（帯部分）のみに背景とストライプを描画し、中央は完全クリア
         ctx.save();
-        // 1. 外側の枠エリアを作成
         ctx.beginPath();
         ctx.rect(m, m, w - m*2, h - m*2);
-        // 2. 内側のエリア（写真が見える部分）を逆方向にくり抜くパス
         const innerMargin = m + lw * 4;
         ctx.rect(innerMargin, innerMargin, w - innerMargin * 2, h - innerMargin * 2);
-        ctx.clip('evenodd'); // 偶奇規則で「枠と内側の間（帯部分）」だけを残す
-
-        // 3. 帯部分に黄色のベースを塗る
+        ctx.clip('evenodd');
         ctx.fillStyle = '#ffcc00';
         ctx.fillRect(m, m, w - m*2, h - m*2);
-
-        // 4. 黒の斜めストライプを描画
         ctx.fillStyle = '#000000';
         for(let i = -w; i < w * 2; i += lw * 8) {
           ctx.beginPath();
@@ -520,6 +513,14 @@
     const originalText = els.btnZipDownload.innerText;
     els.btnZipDownload.innerText = "ZIP生成中... (お待ちください)"; els.btnZipDownload.disabled = true;
 
+    // 1枚目のアイテムから日時を抽出してZIPのファイル名ベースにする
+    const firstItem = state.items[0];
+    const match = firstItem.originalName.match(/VRChat_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})/);
+    let zipBaseDate = "Photos";
+    if (match) {
+      zipBaseDate = `${match[1]}-${match[2]}`; // 例: 2026-09-08-03-12-22
+    }
+
     const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
     for (const item of state.items) {
       updateCanvas(offCtx, item);
@@ -528,8 +529,11 @@
     }
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const link = document.createElement('a'); link.download = `VRC_Photos_${Date.now()}.zip`;
-    link.href = URL.createObjectURL(zipBlob); link.click();
+    const link = document.createElement('a'); 
+    link.download = `VRC_${zipBaseDate}.zip`; // 1枚目の日時を反映したZIP名
+    link.href = URL.createObjectURL(zipBlob); 
+    link.click();
+
     els.btnZipDownload.innerText = originalText; els.btnZipDownload.disabled = false;
   });
 </script>
