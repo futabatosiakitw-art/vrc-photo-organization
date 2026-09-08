@@ -21,7 +21,7 @@
     .control-group h3 { margin: 0 0 10px 0; font-size: 14px; color: var(--accent); display: flex; justify-content: space-between; align-items: center; }
     label { display: block; margin-bottom: 5px; font-size: 13px; }
     input[type="text"], select, input[type="range"], textarea { width: 100%; box-sizing: border-box; padding: 8px; background: #1a1a1a; border: 1px solid #555; color: white; border-radius: 4px; margin-bottom: 8px; font-family: sans-serif; }
-    textarea { resize: vertical; min-height: 80px; }
+    textarea { resize: vertical; min-height: 110px; }
     .flex-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
     .flex-row input[type="text"] { margin-bottom: 0; }
     button { width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; margin-bottom: 10px; flex-shrink: 0; }
@@ -170,9 +170,10 @@
 
   <div class="control-group">
     <h3>プロパティコメント設定</h3>
-    <label class="flex-row"><input type="checkbox" id="check-auto-prop" checked> メタデータからワールド名を自動反映する</label>
-    <label>コメント欄 (ファイルプロパティに埋め込み):</label>
-    <textarea id="input-property-comment" placeholder="VRC world: ワールド名&#10;author: "></textarea>
+    <label class="flex-row"><input type="checkbox" id="check-auto-prop" checked> メタデータからワールド情報を自動反映する</label>
+    <label>コメント欄 (メモ・プロパティ用):</label>
+    <textarea id="input-property-comment" placeholder="VRC world: ワールド名&#10;URL: https://vrchat.com/home/world/wrld_...&#10;author: &#10;costume: &#10;shop: "></textarea>
+    <label class="flex-row" style="margin-top: 8px;"><input type="checkbox" id="check-save-txt" checked> 同じ名前のテキストファイル(.txt)も一緒に保存する</label>
   </div>
 
   <div class="control-group">
@@ -207,6 +208,7 @@
     showComment: document.getElementById('check-show-comment'), comment: document.getElementById('input-comment'),
     inlineLayout: document.getElementById('check-inline-layout'), 
     autoProp: document.getElementById('check-auto-prop'), propComment: document.getElementById('input-property-comment'),
+    saveTxt: document.getElementById('check-save-txt'),
     fileWorldName: document.getElementById('check-file-worldname'), fileWorldId: document.getElementById('check-file-worldid'),
     fontPreset: document.getElementById('select-font-preset'), customFont: document.getElementById('input-custom-font'),
     fontColor: document.getElementById('input-font-color'), bold: document.getElementById('check-bold'), shadow: document.getElementById('check-shadow'),
@@ -232,7 +234,7 @@
   };
 
   ['date', 'world', 'comment', 'customFont', 'fontColor', 'propComment'].forEach(id => addTrigger(els[id], true));
-  ['showDate', 'showWorld', 'showComment', 'inlineLayout', 'autoProp', 'fileWorldName', 'fileWorldId', 'bold', 'shadow', 'position', 'whiteFrame', 'textInMargin', 'overlayFrame', 'overlaySelect', 'fontPreset'].forEach(id => addTrigger(els[id], false));
+  ['showDate', 'showWorld', 'showComment', 'inlineLayout', 'autoProp', 'saveTxt', 'fileWorldName', 'fileWorldId', 'bold', 'shadow', 'position', 'whiteFrame', 'textInMargin', 'overlayFrame', 'overlaySelect', 'fontPreset'].forEach(id => addTrigger(els[id], false));
   ['size', 'marginSize', 'crisp', 'warm', 'cool'].forEach(id => addTrigger(els[id], true));
 
   els.actualSize.addEventListener('change', e => { els.canvas.className = e.target.checked ? '' : 'fit-view'; });
@@ -289,7 +291,8 @@
     els.fileNameDisplay.innerText = `(${current.originalName})`;
 
     if (els.autoProp.checked) {
-      els.propComment.value = `VRC world: ${current.world}\nauthor: `;
+      const worldUrl = current.worldId ? `https://vrchat.com/home/world/${current.worldId}` : '';
+      els.propComment.value = `VRC world: ${current.world}\nURL: ${worldUrl}\nauthor: \ncostume: \nshop: `;
     }
 
     updateCanvas();
@@ -362,89 +365,6 @@
       reader.onload = (e) => { const img = new Image(); img.onload = () => resolve(img); img.src = e.target.result; };
       reader.readAsDataURL(file);
     });
-  }
-
-  async function addPngCommentToBlob(blob, commentText) {
-    if (!commentText) return blob;
-    try {
-      const arrayBuffer = await blob.arrayBuffer();
-      const bytes = new Uint8Array(arrayBuffer);
-      
-      if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
-        return blob;
-      }
-
-      const crcTable = [];
-      for (let n = 0; n < 256; n++) {
-        let c = n;
-        for (let k = 0; k < 8; k++) {
-          if ((c & 1) !== 0) {
-            c = 0xEDB88320 ^ (c >>> 1);
-          } else {
-            c = c >>> 1;
-          }
-        }
-        crcTable[n] = c;
-      }
-
-      function calcCrc(buf) {
-        let c = 0xFFFFFFFF;
-        for (let i = 0; i < buf.length; i++) {
-          c = (c >>> 8) ^ crcTable[(c ^ buf[i]) & 0xFF];
-        }
-        return ~c >>> 0;
-      }
-
-      // 先頭のPNGシグネチャ（8バイト）を保持
-      const pngSignature = bytes.slice(0, 8);
-      const newChunks = [pngSignature];
-      let offset = 8;
-      const view = new DataView(arrayBuffer);
-
-      while (offset < bytes.length) {
-        const length = view.getUint32(offset);
-        const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
-        const chunkBytes = bytes.slice(offset, offset + 12 + length);
-        
-        if (type === 'IEND') {
-          const encoder = new TextEncoder();
-          const keyword = encoder.encode('Comment');
-          const text = encoder.encode(commentText);
-          const dataLen = keyword.length + 1 + text.length;
-          
-          const tChunkData = new Uint8Array(4 + 4 + dataLen + 4);
-          const tView = new DataView(tChunkData.buffer);
-          tView.setUint32(0, dataLen);
-          tChunkData.set([0x74, 0x45, 0x58, 0x74], 4);
-          tChunkData.set(keyword, 8);
-          tChunkData[8 + keyword.length] = 0;
-          tChunkData.set(text, 8 + keyword.length + 1);
-          
-          const crcTarget = tChunkData.slice(4, 4 + 4 + dataLen);
-          const crc = calcCrc(crcTarget);
-          tView.setUint32(4 + 4 + dataLen, crc);
-          
-          newChunks.push(tChunkData);
-        }
-        
-        newChunks.push(chunkBytes);
-        offset += 12 + length;
-        if (type === 'IEND') break;
-      }
-
-      const totalLength = newChunks.reduce((acc, c) => acc + c.length, 0);
-      const resultBytes = new Uint8Array(totalLength);
-      let pos = 0;
-      for (const chunk of newChunks) {
-        resultBytes.set(chunk, pos);
-        pos += chunk.length;
-      }
-      
-      return new Blob([resultBytes], { type: 'image/png' });
-    } catch (e) {
-      console.warn("メタデータ追加エラー:", e);
-      return blob;
-    }
   }
 
   function drawProceduralFrame(ctx, type, cw, ch, p, w, h) {
@@ -665,13 +585,25 @@
       const current = state.items[state.currentIndex];
       const dlName = generateFilename(current);
       
-      let blob = await new Promise(resolve => els.canvas.toBlob(resolve, 'image/png'));
-      blob = await addPngCommentToBlob(blob, els.propComment.value);
+      const blob = await new Promise(resolve => els.canvas.toBlob(resolve, 'image/png'));
 
+      // 画像のダウンロード
       const link = document.createElement('a'); 
       link.download = dlName; 
       link.href = URL.createObjectURL(blob); 
       link.click();
+
+      // テキストファイルの同時ダウンロード
+      if (els.saveTxt.checked && els.propComment.value.trim() !== "") {
+        const txtName = dlName.replace(/\.png$/, '.txt');
+        const txtBlob = new Blob([els.propComment.value], { type: 'text/plain;charset=utf-8' });
+        const txtLink = document.createElement('a');
+        txtLink.download = txtName;
+        txtLink.href = URL.createObjectURL(txtBlob);
+        setTimeout(() => {
+          txtLink.click();
+        }, 300);
+      }
     } catch (e) {
       console.error(e);
       alert("ダウンロード処理中にエラーが発生しました。");
@@ -695,9 +627,15 @@
       const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
       for (const item of state.items) {
         updateCanvas(offCtx, item);
-        let blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
-        blob = await addPngCommentToBlob(blob, els.propComment.value);
-        zip.file(generateFilename(item), blob);
+        const blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
+        const pngName = generateFilename(item);
+        zip.file(pngName, blob);
+
+        // ZIP内にもテキストファイルを同梱
+        if (els.saveTxt.checked && els.propComment.value.trim() !== "") {
+          const txtName = pngName.replace(/\.png$/, '.txt');
+          zip.file(txtName, els.propComment.value);
+        }
       }
 
       const zipBlob = await zip.generateAsync({ type: 'blob' });
