@@ -168,7 +168,6 @@
     <input type="range" id="slider-cool" min="0" max="100" step="5" value="0">
   </div>
 
-  <!-- ▼ プロパティコメント入力設定 ▼ -->
   <div class="control-group">
     <h3>プロパティコメント設定</h3>
     <label class="flex-row"><input type="checkbox" id="check-auto-prop" checked> メタデータからワールド名を自動反映する</label>
@@ -176,7 +175,6 @@
     <textarea id="input-property-comment" placeholder="VRC world: ワールド名&#10;author: "></textarea>
   </div>
 
-  <!-- ▼ ファイル名設定 ▼ -->
   <div class="control-group">
     <h3>ファイル名設定</h3>
     <label class="flex-row"><input type="checkbox" id="check-file-worldname"> ファイル名にワールド名を含める</label>
@@ -366,81 +364,85 @@
     });
   }
 
-  // PNGにtEXtチャンク（コメント）を埋め込む関数
   async function addPngCommentToBlob(blob, commentText) {
     if (!commentText) return blob;
-    const arrayBuffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    
-    if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
-      return blob;
-    }
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      
+      if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
+        return blob;
+      }
 
-    const crcTable = [];
-    for (let n = 0; n < 256; n++) {
-      let c = n;
-      for (let k = 0; k < 8; k++) {
-        if ((c & 1) !== 0) {
-          c = 0xEDB88320 ^ (c >>> 1);
-        } else {
-          c = c >>> 1;
+      const crcTable = [];
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) {
+          if ((c & 1) !== 0) {
+            c = 0xEDB88320 ^ (c >>> 1);
+          } else {
+            c = c >>> 1;
+          }
         }
+        crcTable[n] = c;
       }
-      crcTable[n] = c;
-    }
 
-    function calcCrc(buf) {
-      let c = 0xFFFFFFFF;
-      for (let i = 0; i < buf.length; i++) {
-        c = (c >>> 8) ^ crcTable[(c ^ buf[i]) & 0xFF];
+      function calcCrc(buf) {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < buf.length; i++) {
+          c = (c >>> 8) ^ crcTable[(c ^ buf[i]) & 0xFF];
+        }
+        return ~c >>> 0;
       }
-      return ~c >>> 0;
-    }
 
-    let offset = 8;
-    const newChunks = [];
-    const view = new DataView(arrayBuffer);
+      let offset = 8;
+      const newChunks = [];
+      const view = new DataView(arrayBuffer);
 
-    while (offset < bytes.length) {
-      const length = view.getUint32(offset);
-      const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
-      const chunkBytes = bytes.slice(offset, offset + 12 + length);
+      while (offset < bytes.length) {
+        const length = view.getUint32(offset);
+        const type = String.fromCharCode(bytes[offset+4], bytes[offset+5], bytes[offset+6], bytes[offset+7]);
+        const chunkBytes = bytes.slice(offset, offset + 12 + length);
+        
+        if (type === 'IEND') {
+          const encoder = new TextEncoder();
+          const keyword = encoder.encode('Comment');
+          const text = encoder.encode(commentText);
+          const dataLen = keyword.length + 1 + text.length;
+          
+          const tChunkData = new Uint8Array(4 + 4 + dataLen + 4);
+          const tView = new DataView(tChunkData.buffer);
+          tView.setUint32(0, dataLen);
+          tChunkData.set([0x74, 0x45, 0x58, 0x74], 4);
+          tChunkData.set(keyword, 8);
+          tChunkData[8 + keyword.length] = 0;
+          tChunkData.set(text, 8 + keyword.length + 1);
+          
+          const crcTarget = tChunkData.slice(4, 4 + 4 + dataLen);
+          const crc = calcCrc(crcTarget);
+          tView.setUint32(4 + 4 + dataLen, crc);
+          
+          newChunks.push(tChunkData);
+        }
+        
+        newChunks.push(chunkBytes);
+        offset += 12 + length;
+        if (type === 'IEND') break;
+      }
+
+      const totalLength = newChunks.reduce((acc, c) => acc + c.length, 0);
+      const resultBytes = new Uint8Array(totalLength);
+      let pos = 0;
+      for (const chunk of newChunks) {
+        resultBytes.set(chunk, pos);
+        pos += chunk.length;
+      }
       
-      if (type === 'IEND') {
-        const encoder = new TextEncoder();
-        const keyword = encoder.encode('Comment');
-        const text = encoder.encode(commentText);
-        const dataLen = keyword.length + 1 + text.length;
-        
-        const tChunkData = new Uint8Array(4 + 4 + dataLen + 4);
-        const tView = new DataView(tChunkData.buffer);
-        tView.setUint32(0, dataLen);
-        tChunkData.set([0x74, 0x45, 0x58, 0x74], 4); // "tEXt"
-        tChunkData.set(keyword, 8);
-        tChunkData[8 + keyword.length] = 0;
-        tChunkData.set(text, 8 + keyword.length + 1);
-        
-        const crcTarget = tChunkData.slice(4, 4 + 4 + dataLen);
-        const crc = calcCrc(crcTarget);
-        tView.setUint32(4 + 4 + dataLen, crc);
-        
-        newChunks.push(tChunkData);
-      }
-      
-      newChunks.push(chunkBytes);
-      offset += 12 + length;
-      if (type === 'IEND') break;
+      return new Blob([resultBytes], { type: 'image/png' });
+    } catch (e) {
+      console.warn("メタデータ追加エラー:", e);
+      return blob; // エラー時はそのままのblobを返す
     }
-
-    const totalLength = newChunks.reduce((acc, c) => acc + c.length, 0);
-    const resultBytes = new Uint8Array(totalLength);
-    let pos = 0;
-    for (const chunk of newChunks) {
-      resultBytes.set(chunk, pos);
-      pos += chunk.length;
-    }
-    
-    return new Blob([resultBytes], { type: 'image/png' });
   }
 
   function drawProceduralFrame(ctx, type, cw, ch, p, w, h) {
@@ -657,16 +659,21 @@
 
   els.btnDownload.addEventListener('click', async () => {
     if (state.items.length === 0) return alert("画像を読み込んでください");
-    const current = state.items[state.currentIndex];
-    const dlName = generateFilename(current);
-    
-    let blob = await new Promise(resolve => els.canvas.toBlob(resolve, 'image/png'));
-    blob = await addPngCommentToBlob(blob, els.propComment.value);
+    try {
+      const current = state.items[state.currentIndex];
+      const dlName = generateFilename(current);
+      
+      let blob = await new Promise(resolve => els.canvas.toBlob(resolve, 'image/png'));
+      blob = await addPngCommentToBlob(blob, els.propComment.value);
 
-    const link = document.createElement('a'); 
-    link.download = dlName; 
-    link.href = URL.createObjectURL(blob); 
-    link.click();
+      const link = document.createElement('a'); 
+      link.download = dlName; 
+      link.href = URL.createObjectURL(blob); 
+      link.click();
+    } catch (e) {
+      console.error(e);
+      alert("ダウンロード処理中にエラーが発生しました。");
+    }
   });
 
   els.btnZipDownload.addEventListener('click', async () => {
@@ -675,28 +682,34 @@
     const originalText = els.btnZipDownload.innerText;
     els.btnZipDownload.innerText = "ZIP生成中... (お待ちください)"; els.btnZipDownload.disabled = true;
 
-    const firstItem = state.items[0];
-    const match = firstItem.originalName.match(/VRChat_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})/);
-    let zipBaseDate = "Photos";
-    if (match) {
-      zipBaseDate = `${match[1]}-${match[2]}`;
+    try {
+      const firstItem = state.items[0];
+      const match = firstItem.originalName.match(/VRChat_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})/);
+      let zipBaseDate = "Photos";
+      if (match) {
+        zipBaseDate = `${match[1]}-${match[2]}`;
+      }
+
+      const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
+      for (const item of state.items) {
+        updateCanvas(offCtx, item);
+        let blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
+        blob = await addPngCommentToBlob(blob, els.propComment.value);
+        zip.file(generateFilename(item), blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a'); 
+      link.download = `VRC_${zipBaseDate}.zip`;
+      link.href = URL.createObjectURL(zipBlob); 
+      link.click();
+    } catch (e) {
+      console.error(e);
+      alert("ZIP生成中にエラーが発生しました。");
+    } finally {
+      els.btnZipDownload.innerText = originalText; 
+      els.btnZipDownload.disabled = false;
     }
-
-    const offCanvas = document.createElement('canvas'); const offCtx = offCanvas.getContext('2d');
-    for (const item of state.items) {
-      updateCanvas(offCtx, item);
-      let blob = await new Promise(resolve => offCanvas.toBlob(resolve, 'image/png'));
-      blob = await addPngCommentToBlob(blob, els.propComment.value);
-      zip.file(generateFilename(item), blob);
-    }
-
-    const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const link = document.createElement('a'); 
-    link.download = `VRC_${zipBaseDate}.zip`;
-    link.href = URL.createObjectURL(zipBlob); 
-    link.click();
-
-    els.btnZipDownload.innerText = originalText; els.btnZipDownload.disabled = false;
   });
 </script>
 </body>
