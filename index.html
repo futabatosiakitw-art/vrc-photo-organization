@@ -372,16 +372,31 @@
         ctx.shadowBlur = 0;
         break;
       case 'street':
+        // ストリートフレームの修正: 外側枠（帯部分）のみに背景とストライプを描画し、中央は完全クリア
         ctx.save();
-        ctx.fillStyle = '#ffcc00'; 
+        // 1. 外側の枠エリアを作成
+        ctx.beginPath();
+        ctx.rect(m, m, w - m*2, h - m*2);
+        // 2. 内側のエリア（写真が見える部分）を逆方向にくり抜くパス
+        const innerMargin = m + lw * 4;
+        ctx.rect(innerMargin, innerMargin, w - innerMargin * 2, h - innerMargin * 2);
+        ctx.clip('evenodd'); // 偶奇規則で「枠と内側の間（帯部分）」だけを残す
+
+        // 3. 帯部分に黄色のベースを塗る
+        ctx.fillStyle = '#ffcc00';
         ctx.fillRect(m, m, w - m*2, h - m*2);
-        ctx.beginPath(); ctx.rect(m, m, w - m*2, h - m*2); ctx.clip();
+
+        // 4. 黒の斜めストライプを描画
         ctx.fillStyle = '#000000';
-        for(let i=-w; i<w*2; i+=lw*8) {
-          ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i+lw*4, 0); ctx.lineTo(i-h+lw*4, h); ctx.lineTo(i-h, h); ctx.fill();
+        for(let i = -w; i < w * 2; i += lw * 8) {
+          ctx.beginPath();
+          ctx.moveTo(i, 0);
+          ctx.lineTo(i + lw * 4, 0);
+          ctx.lineTo(i - h + lw * 4, h);
+          ctx.lineTo(i - h, h);
+          ctx.fill();
         }
         ctx.restore();
-        ctx.clearRect(m + lw*4, m + lw*4, w - (m+lw*4)*2, h - (m+lw*4)*2);
         break;
       case 'cinematic_bar':
         const targetRatio = 2.35; const currentRatio = w / h;
